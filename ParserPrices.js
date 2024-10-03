@@ -8,6 +8,7 @@ const fs = require('fs');
     
     // Пул API ключей
     const API_KEYS = [
+      
         
     ];
     
@@ -50,10 +51,40 @@ const fs = require('fs');
         const itemInfo = await getItemPriceInfo(marketHashName);
         if (!itemInfo || !itemInfo.history) return null;
     
-        const prices = itemInfo.history.map(entry => parseFloat(entry[1]));
+        const history = itemInfo.history;
+    
+        // Отбрасываем предметы с малой историей продаж (например, менее 5 продаж)
+        if (history.length < 5) {
+            console.log(`${marketHashName} пропущен из-за малого количества продаж (${history.length})`);
+            return null;
+        }
+    
+        // Преобразуем историю в формат [дата, цена] и сортируем по дате
+        const sales = history.map(entry => ({
+            date: new Date(entry[0] * 1000), // API возвращает дату в виде Unix timestamp
+            price: parseFloat(entry[1])
+        }));
+    
+        // Проверяем частоту продаж — вычисляем промежутки между продажами
+        let saleIntervals = [];
+        for (let i = 1; i < sales.length; i++) {
+            const daysBetweenSales = (sales[i].date - sales[i - 1].date) / (1000 * 60 * 60 * 24); // Промежуток в днях
+            saleIntervals.push(daysBetweenSales);
+        }
+    
+        // Если максимальный промежуток между продажами больше, скажем, 30 дней — пропускаем этот предмет
+        const maxDaysBetweenSales = Math.max(...saleIntervals);
+        if (maxDaysBetweenSales > 30) {
+            console.log(`${marketHashName} пропущен из-за редких продаж (максимальный промежуток ${maxDaysBetweenSales} дней)`);
+            return null;
+        }
+    
+        // Если все проверки пройдены, вычисляем медианную цену
+        const prices = sales.map(sale => sale.price);
         const medianPrice = calculateMedian(prices);
     
-        return medianPrice * 0.9; // Корректируем до 92.5% от медианы
+        // Возвращаем скорректированную цену
+        return medianPrice * 0.90; // Корректируем до 70% от медианы
     };
     
     // Функция для записи данных в файл
@@ -82,7 +113,7 @@ const fs = require('fs');
                     const promises = itemData.data.map(async (item) => {
                         const marketHashName = item[2];
     
-                        if (marketHashName.startsWith("Sticker |") || uniqueItems.has(marketHashName)) return;
+                        if (marketHashName.startsWith("Sticker |") || uniqueItems.has(marketHashName) || marketHashName.startsWith("Souvenir") ) return;
     
                         uniqueItems.add(marketHashName);
     
@@ -102,7 +133,7 @@ const fs = require('fs');
                     console.error(`Error processing file ${fileName}:`, error);
                     callback(error);
                 }
-            }, 5); // Одновременно 5 потоков
+            }, 10); // Одновременно 5 потоков
     
             // Добавляем задания в очередь
             data.items.forEach(fileName => queue.push(fileName));
