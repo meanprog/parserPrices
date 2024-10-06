@@ -1,0 +1,12 @@
+const API_KEYS = [
+    '25Zlbh7ae4o8snvO30822pgpL0sots7',
+    'cCh6MtwbeH49fwYm5O96tZ3mLH5eXXe',
+    '7H43SerSd60fYnjOzSAZ8d9HOCPt3f4',
+    '6Mb3jPzSRDmBdA5f8AcY1TzppUEcTzB',
+    'm0iSl07zQ31R8HK1Fg0Qh4UT9U94gfk',
+    'l90r7zCca004KgN66w3vSZ3R799K9wC',
+    '9T9Xpb5PvcG4367tLUZ8eo29h38kaS2',
+    'tXTJp47K9wAU85Yrt5drVI69fB9s21s',
+    'Iewh6mjztQ43e8e3uraW7I751NjhJs7',
+    'SPNBra7rC3FddV9f7HBOE9F7NMc4v57'
+];

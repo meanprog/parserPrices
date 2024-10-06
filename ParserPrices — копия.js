@@ -194,7 +194,7 @@ const processPrices = async (minPrice, maxPrice) => {
                     }
 
                     // Задержка между запросами (например, 10 секунд)
-                    await delay(12000);
+                    await delay(10000);
                 });
 
                 await Promise.all(promises);
@@ -203,7 +203,7 @@ const processPrices = async (minPrice, maxPrice) => {
                 console.error(`Error processing file ${fileName}:`, error);
                 callback(error);
             }
-        }, 5); // Одновременно 5 потоков
+        }, 10); // Одновременно 5 потоков
 
         // Добавляем задания в очередь
         data.items.forEach(fileName => queue.push(fileName));
