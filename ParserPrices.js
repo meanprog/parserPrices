@@ -8,16 +8,7 @@ const OUTPUT_FILE = 'Skins.txt';
 
 // Пул API ключей
 const API_KEYS = [
-    '25Zlbh7ae4o8snvO30822pgpL0sots7',
-    'cCh6MtwbeH49fwYm5O96tZ3mLH5eXXe',
-    '7H43SerSd60fYnjOzSAZ8d9HOCPt3f4',
-    '6Mb3jPzSRDmBdA5f8AcY1TzppUEcTzB',
-    'm0iSl07zQ31R8HK1Fg0Qh4UT9U94gfk',
-    'l90r7zCca004KgN66w3vSZ3R799K9wC',
-    '9T9Xpb5PvcG4367tLUZ8eo29h38kaS2',
-    'tXTJp47K9wAU85Yrt5drVI69fB9s21s',
-    'Iewh6mjztQ43e8e3uraW7I751NjhJs7',
-    'SPNBra7rC3FddV9f7HBOE9F7NMc4v57'    
+    
 ];
 
 let itemPricesMap = new Map();
@@ -42,31 +33,41 @@ const calculateMedian = arr => {
 
 // Функция для запроса "bid-ask" и получения самой большой цены на покупку
 const getBidAskPrice = async (marketHashName, phase = '') => {
+    await delay(5000);
     const apiKey = await getApiKey();
     const url = `https://market.csgo.com/api/v2/bid-ask?key=${apiKey}&hash_name=${encodeURIComponent(marketHashName)}&phase=${phase}`;
 
-    try {
-        const response = await axios.get(url);
-        const { bid, ask } = response.data;
+    let attempts = 0;
 
-        let highestBid = null;
-        let lowestAsk = null;
-        if (bid && bid.length > 0) {
-            highestBid = Math.max(...bid.map(order => parseFloat(order.price)));
+    while (attempts < 100) {
+        try {
+            const response = await axios.get(url);
+            const { bid, ask } = response.data;
+
+            let highestBid = null;
+            let lowestAsk = null;
+            if (bid && bid.length > 0) {
+                highestBid = Math.max(...bid.map(order => parseFloat(order.price)));
+            }
+            if (ask && ask.length > 0) {
+                lowestAsk = Math.min(...ask.map(order => parseFloat(order.price)));
+            }
+            await delay(15000);
+            return { highestBid, lowestAsk };
+        } catch (error) {
+            attempts++;
+            if (error.response && error.response.status === 429) {
+                console.log(`Слишком много запросов для ${marketHashName}. Попытка ${attempts}/100. Ждем 1 минуту перед повторной попыткой...`);
+                await delay(60000); // Пауза в 1 минуту
+            } else {
+                console.error(`Ошибка при получении bid-ask для ${marketHashName}:`, error.message);
+                // Здесь мы не выходим из цикла, чтобы продолжить попытки
+            }
         }
-        if (ask && ask.length > 0) {
-            lowestAsk = Math.min(...ask.map(order => parseFloat(order.price)));
-        }
-        return { highestBid, lowestAsk };   
-    } catch (error) {
-        if (error.response && error.response.status === 429) {
-            console.log('Слишком много запросов. Ждем 1 минуту перед повторной попыткой...');
-            await delay(60000); // Пауза в 1 минуту
-            return getBidAskPrice(marketHashName, phase); // Повторить запрос
-        }
-        console.error(`Ошибка при получении bid-ask для ${marketHashName}:`, error);
-        return null;
     }
+
+    console.log(`Превышено количество попыток для ${marketHashName}. Переходим к следующему предмету.`);
+    return null;
 };
 
 // Функция для получения информации о ценах по предмету
@@ -74,13 +75,27 @@ const getItemPriceInfo = async (marketHashName) => {
     const apiKey = getApiKey(); // Берём текущий API ключ
     const url = `https://market.csgo.com/api/v2/get-list-items-info?key=${apiKey}&list_hash_name[]=${encodeURIComponent(marketHashName)}`;
 
-    try {
-        const response = await axios.get(url);
-        return response.data.data[marketHashName];
-    } catch (error) {
-        console.error(`Error fetching price info for ${marketHashName}:`, error);
-        return null;
+    let attempts = 0;
+
+    while (attempts < 100) {
+        try {
+            const response = await axios.get(url);
+            await delay(15000);
+            return response.data.data[marketHashName];
+        } catch (error) {
+            attempts++;
+            if (error.response && error.response.status === 429) {
+                console.log(`Слишком много запросов для ${marketHashName}. Попытка ${attempts}/100. Ждем 1 минуту перед повторной попыткой...`);
+                await delay(5000); // Пауза в 1 минуту
+            } else {
+                console.error(`Ошибка при получении информации о ценах для ${marketHashName}:`, error.message);
+                // Здесь мы не выходим из цикла, чтобы продолжить попытки
+            }
+        }
     }
+
+    console.log(`Превышено количество попыток для ${marketHashName}. Переходим к следующему предмету.`);
+    return null;
 };
 
 // Функция для получения скорректированной цены на основе медианы и ордеров
@@ -118,7 +133,7 @@ const getAdjustedPriceForItem = async (marketHashName, phase = '') => {
 
     // Вычисляем медианную цену
     const prices = sales.map(sale => sale.price);
-    const medianPrice = calculateMedian(prices);
+    const medianPrice = calculateMedian(prices) * 0.85; //проценты от медианы
 
     // Получаем текущую цену ордеров (bid-ask)
     const { highestBid, lowestAsk } = await getBidAskPrice(marketHashName, phase);
@@ -141,8 +156,8 @@ const getAdjustedPriceForItem = async (marketHashName, phase = '') => {
 
     if (lowestAsk !== null) {
         if (lowestAsk - medianPrice < lowestAsk * 0.10) {
-            adjustedPrice = lowestAsk * 0.90;
-            console.log(`${marketHashName}: Устанавливаем цену ${adjustedPrice.toFixed(2)} (10% ниже от минимальной цены)`);
+            adjustedPrice = lowestAsk * 0.95;
+            console.log(`${marketHashName}: Медианная цена ${medianPrice.toFixed(2)} ниже на 10% от самого низкого ордера ${lowestAsk.toFixed(2)}. Устанавливаем цену ${adjustedPrice.toFixed(2)}.`);
         }
     }
 
@@ -156,14 +171,11 @@ const getAdjustedPriceForItem = async (marketHashName, phase = '') => {
     }
 };
 
-// Функция для записи данных в файл
+// Функция для сохранения цен в файл
 const saveToFile = () => {
-    const outputData = Array.from(itemPricesMap.entries())
-        .map(([name, price]) => `${name}^${price.toFixed(2)}`)
-        .join('\n');
-
-    fs.writeFileSync(OUTPUT_FILE, outputData, 'utf8');
-    console.log('Все данные успешно записаны в Skins.txt');
+    const data = [...itemPricesMap.entries()].map(([name, price]) => `${name}^${price.toFixed(2)}`).join('\n');
+    fs.writeFileSync(OUTPUT_FILE, data);
+    console.log(`Данные сохранены в файл ${OUTPUT_FILE}`);
 };
 
 // Основная функция для обработки цен с использованием параллелизма и задержки
@@ -193,8 +205,8 @@ const processPrices = async (minPrice, maxPrice) => {
                         console.log(`${marketHashName}^${adjustedPrice.toFixed(2)}`);
                     }
 
-                    // Задержка между запросами (например, 10 секунд)
-                    await delay(12000);
+                    // Задержка между запросами (например, 12 секунд)
+                    await delay(5000);
                 });
 
                 await Promise.all(promises);
@@ -203,7 +215,7 @@ const processPrices = async (minPrice, maxPrice) => {
                 console.error(`Error processing file ${fileName}:`, error);
                 callback(error);
             }
-        }, 5); // Одновременно 5 потоков
+        }, 2); // Одновременно 5 потоков
 
         // Добавляем задания в очередь
         data.items.forEach(fileName => queue.push(fileName));
